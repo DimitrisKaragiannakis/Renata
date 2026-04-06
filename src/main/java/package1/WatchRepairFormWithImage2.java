@@ -1,4 +1,4 @@
-package package1;
+package main.java.package1;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
@@ -162,7 +162,7 @@ public class WatchRepairFormWithImage2 extends JFrame {
         // Add it to your existing button panel
         buttonPanel.add(clearBtn);
         
-        mainContentPanel.add(buttonPanel);
+       // mainContentPanel.add(buttonPanel);
 
         JScrollPane mainScrollPane = new JScrollPane(mainContentPanel);
         mainScrollPane.getVerticalScrollBar().setUnitIncrement(16);

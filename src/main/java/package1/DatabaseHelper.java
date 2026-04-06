@@ -1,4 +1,4 @@
-package package1;
+package main.java.package1;
 
 import java.sql.*;
 
