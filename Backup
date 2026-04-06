@@ -1,0 +1,443 @@
+package package1;
+
+import javax.swing.*;
+import javax.swing.table.DefaultTableModel;
+import java.awt.*;
+import java.io.*;
+import java.nio.file.*;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.ArrayList;
+
+// Apache PDFBox Imports
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+
+public class WatchRepairFormWithImage2 extends JFrame {
+
+    private JTextField nameField, addressField, cityField, brandField, telField, refField, modelField;
+    private JTable serviceTable;
+    private JLabel imagePreviewLabel;
+    private JButton uploadButton, saveBtn, loadBtn, printBtn;
+    private File selectedImageFile;
+
+    public WatchRepairFormWithImage2() {
+        setTitle("ΔΕΛΤΙΟ ΠΟΣΟΤΙΚΗΣ ΠΑΡΑΛΑΒΗΣ ΕΠΙΣΚΕΥΗΣ");
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setSize(750, 900);
+        setLocationRelativeTo(null);
+
+        JPanel mainContentPanel = new JPanel();
+        mainContentPanel.setLayout(new BoxLayout(mainContentPanel, BoxLayout.Y_AXIS));
+        mainContentPanel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+
+        // 1. Header Section
+        mainContentPanel.add(createHeaderPanel());
+        mainContentPanel.add(Box.createVerticalStrut(15));
+
+        // 2. Image Section
+        mainContentPanel.add(createImageUploadPanel());
+        mainContentPanel.add(Box.createVerticalStrut(15));
+
+        // 3. Services Section
+        mainContentPanel.add(createServicesTablePanel());
+        mainContentPanel.add(Box.createVerticalStrut(15));
+
+        // 4. Button Panel
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 10));
+        
+        saveBtn = new JButton("Save Record");
+        saveBtn.setFont(new Font("Arial", Font.BOLD, 12));
+        saveBtn.addActionListener(e -> saveFullRecord());
+
+        loadBtn = new JButton("Load Record");
+        loadBtn.addActionListener(e -> showLoadDialog());
+
+        printBtn = new JButton("Print PDF");
+        printBtn.setFont(new Font("Arial", Font.BOLD, 12));
+        printBtn.setBackground(new Color(220, 240, 255));
+        printBtn.addActionListener(e -> generatePDF());
+        
+        styleButton(saveBtn, new Color(46, 204, 113)); // Emerald Green
+        styleButton(printBtn, new Color(52, 152, 219)); // Peter River Blue
+        styleButton(loadBtn, new Color(149, 165, 166)); // Concrete Gray
+
+        buttonPanel.add(saveBtn);
+        buttonPanel.add(loadBtn);
+        buttonPanel.add(printBtn);
+        
+     // Inside the WatchRepairFormWithImage2 constructor:
+
+        JButton clearBtn = new JButton("Νέα Εγγραφή (Clear)");
+        styleButton(clearBtn, new Color(231, 76, 60)); // Alizarin Red
+        clearBtn.addActionListener(e -> {
+            int confirm = JOptionPane.showConfirmDialog(this, 
+                "Είστε σίγουροι ότι θέλετε να καθαρίσετε τη φόρμα;", 
+                "Επιβεβαίωση", JOptionPane.YES_NO_OPTION);
+            if (confirm == JOptionPane.YES_OPTION) {
+                clearForm();
+            }
+        });
+
+        // Add it to your existing button panel
+        buttonPanel.add(clearBtn);
+        
+        mainContentPanel.add(buttonPanel);
+
+        JScrollPane mainScrollPane = new JScrollPane(mainContentPanel);
+        mainScrollPane.getVerticalScrollBar().setUnitIncrement(16);
+        add(mainScrollPane);
+    }
+
+    private JPanel createHeaderPanel() {
+        JPanel panel = new JPanel(new GridBagLayout());
+        panel.setBorder(BorderFactory.createTitledBorder("Στοιχεία Πελάτη & Ωρολογίου"));
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.insets = new Insets(4, 4, 4, 4);
+
+        addLabelField(panel, "Ονοματεπώνυμο:", nameField = new JTextField(20), gbc, 0, 0, 3);
+        addLabelField(panel, "Διεύθυνση:", addressField = new JTextField(15), gbc, 1, 0, 1);
+        gbc.gridx = 2; panel.add(new JLabel(" Πόλη:"), gbc);
+        gbc.gridx = 3; cityField = new JTextField(10); panel.add(cityField, gbc);
+        addLabelField(panel, "Μάρκα ωρολογίου:", brandField = new JTextField(15), gbc, 2, 0, 1);
+        gbc.gridx = 2; panel.add(new JLabel(" Τηλ:"), gbc);
+        gbc.gridx = 3; telField = new JTextField(10); panel.add(telField, gbc);
+        addLabelField(panel, "REF:", refField = new JTextField(15), gbc, 3, 0, 1);
+        gbc.gridx = 2; panel.add(new JLabel(" Model:"), gbc);
+        gbc.gridx = 3; modelField = new JTextField(10); panel.add(modelField, gbc);
+        return panel;
+    }
+
+    private void addLabelField(JPanel panel, String labelText, JTextField field, GridBagConstraints gbc, int y, int xStart, int width) {
+        gbc.gridx = xStart; gbc.gridy = y; gbc.gridwidth = 1;
+        panel.add(new JLabel(labelText), gbc);
+        gbc.gridx = xStart + 1; gbc.gridwidth = width; gbc.weightx = 1.0;
+        panel.add(field, gbc);
+        gbc.weightx = 0; gbc.gridwidth = 1;
+    }
+
+    private JPanel createServicesTablePanel() {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBorder(BorderFactory.createTitledBorder("ΕΡΓΑΣΙΕΣ"));
+        String[] columnNames = {"Τύπος Εργασίας", "Επιλογή", "Σημειώσεις"};
+        Object[][] data = {{"SERVICE", false, ""}, {"Κύκλωμα", false, ""}, {"Πηνίο", false, ""},
+                           {"Κορώνα", false, ""}, {"Μηχανή", false, ""}, {"Κρύσταλο / Ζελατίνα", false, ""}};
+        DefaultTableModel model = new DefaultTableModel(data, columnNames) {
+            @Override public Class<?> getColumnClass(int c) { return c == 1 ? Boolean.class : String.class; }
+        };
+        serviceTable = new JTable(model);
+        JScrollPane scrollPane = new JScrollPane(serviceTable);
+        scrollPane.setPreferredSize(new Dimension(600, 150));
+        panel.add(scrollPane, BorderLayout.CENTER);
+        return panel;
+    }
+
+    private JPanel createImageUploadPanel() {
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setBorder(BorderFactory.createTitledBorder("Φωτογραφία Ωρολογίου"));
+        imagePreviewLabel = new JLabel("No Image Selected", SwingConstants.CENTER);
+        imagePreviewLabel.setBorder(BorderFactory.createLineBorder(Color.GRAY));
+        imagePreviewLabel.setPreferredSize(new Dimension(300, 250));
+        imagePreviewLabel.setMaximumSize(new Dimension(300, 250));
+        imagePreviewLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        uploadButton = new JButton("Select Picture");
+        uploadButton.setAlignmentX(Component.CENTER_ALIGNMENT);
+        uploadButton.addActionListener(e -> {
+            JFileChooser fc = new JFileChooser();
+            if (fc.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+                selectedImageFile = fc.getSelectedFile();
+                displayScaledImage(selectedImageFile);
+            }
+        });
+
+        panel.add(Box.createVerticalStrut(5));
+        panel.add(imagePreviewLabel);
+        panel.add(Box.createVerticalStrut(10));
+        panel.add(uploadButton);
+        return panel;
+    }
+
+    private void displayScaledImage(File file) {
+        ImageIcon icon = new ImageIcon(file.getAbsolutePath());
+        Image img = icon.getImage().getScaledInstance(300, 250, Image.SCALE_SMOOTH);
+        imagePreviewLabel.setIcon(new ImageIcon(img));
+        imagePreviewLabel.setText("");
+        imagePreviewLabel.revalidate();
+        imagePreviewLabel.repaint();
+    }
+
+    private boolean validateForm() {
+        if (nameField.getText().trim().isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Το όνομα είναι υποχρεωτικό!", "Missing Data", JOptionPane.WARNING_MESSAGE);
+            return false;
+        }
+        if (brandField.getText().trim().isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Η μάρκα είναι υποχρεωτική!", "Missing Data", JOptionPane.WARNING_MESSAGE);
+            return false;
+        }
+        return true;
+    }
+
+    private void saveFullRecord() {
+        if (!validateForm()) return;
+        try {
+            Path imageDir = Paths.get("saved_images");
+            if (!Files.exists(imageDir)) Files.createDirectories(imageDir);
+
+            String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+            String imagePath = "None";
+            if (selectedImageFile != null) {
+                String fileName = timestamp + "_" + nameField.getText().replaceAll("\\s+", "") + ".jpg";
+                Path targetPath = imageDir.resolve(fileName);
+                Files.copy(selectedImageFile.toPath(), targetPath, StandardCopyOption.REPLACE_EXISTING);
+                imagePath = targetPath.toString();
+            }
+
+            StringBuilder selectedServices = new StringBuilder();
+            DefaultTableModel model = (DefaultTableModel) serviceTable.getModel();
+            for (int i = 0; i < model.getRowCount(); i++) {
+                if ((Boolean) model.getValueAt(i, 1)) {
+                    if (selectedServices.length() > 0) selectedServices.append(", ");
+                    selectedServices.append(model.getValueAt(i, 0));
+                }
+            }
+            String servicesData = selectedServices.length() == 0 ? "None" : selectedServices.toString();
+
+            try (PrintWriter out = new PrintWriter(new FileWriter("repairs_log.csv", true))) {
+                out.printf("%s|%s|%s|%s|%s|%s\n", timestamp, nameField.getText(), brandField.getText(), modelField.getText(), servicesData, imagePath);
+            }
+            JOptionPane.showMessageDialog(this, "Record Saved!");
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    private void generatePDF() {
+        if (!validateForm()) return;
+        
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+        String fileName = "Receipt_" + nameField.getText().replaceAll("\\s+", "") + "_" + timestamp + ".pdf";
+
+        try (PDDocument document = new PDDocument()) {
+            PDPage page = new PDPage();
+            document.addPage(page);
+
+            // --- LOAD BUNDLED GREEK FONTS ---
+            // These look for arial.ttf in the SAME FOLDER as your .java/.jar file
+            File regularFile = new File("arial.ttf");
+            File boldFile = new File("arialbd.ttf"); // Optional: copy arialbd.ttf too
+
+            org.apache.pdfbox.pdmodel.font.PDFont font;
+            org.apache.pdfbox.pdmodel.font.PDFont fontBold;
+
+            if (regularFile.exists()) {
+                font = org.apache.pdfbox.pdmodel.font.PDType0Font.load(document, regularFile);
+                // Use bold if exists, otherwise use regular
+                fontBold = boldFile.exists() ? org.apache.pdfbox.pdmodel.font.PDType0Font.load(document, boldFile) : font;
+            } else {
+                JOptionPane.showMessageDialog(this, 
+                    "Κρίσιμο Σφάλμα: Το αρχείο arial.ttf λείπει από τον φάκελο της εφαρμογής!\n" +
+                    "Please place arial.ttf in the project folder.", "Font Error", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+
+            try (PDPageContentStream contentStream = new PDPageContentStream(document, page)) {
+                
+                // --- HEADER ---
+                contentStream.beginText();
+                contentStream.setFont(fontBold, 18);
+                contentStream.newLineAtOffset(50, 750);
+                contentStream.showText("ΔΕΛΤΙΟ ΠΑΡΑΛΑΒΗΣ ΕΠΙΣΚΕΥΗΣ");
+                contentStream.endText();
+
+                contentStream.beginText();
+                contentStream.setFont(font, 12);
+                contentStream.setLeading(18f);
+                contentStream.newLineAtOffset(50, 710);
+
+                // --- CUSTOMER DATA ---
+                contentStream.showText("Πελάτης: " + nameField.getText().trim());
+                contentStream.newLine();
+                contentStream.showText("Διεύθυνση: " + addressField.getText().trim() + ", " + cityField.getText().trim());
+                contentStream.newLine();
+                contentStream.showText("Τηλέφωνο: " + telField.getText().trim());
+                contentStream.newLine();
+                contentStream.newLine();
+
+                // --- WATCH DATA ---
+                contentStream.setFont(fontBold, 12);
+                contentStream.showText("ΣΤΟΙΧΕΙΑ ΩΡΟΛΟΓΙΟΥ:");
+                contentStream.setFont(font, 12);
+                contentStream.newLine();
+                contentStream.showText("Μάρκα: " + brandField.getText().trim() + " | Model: " + modelField.getText().trim());
+                contentStream.newLine();
+                contentStream.showText("REF: " + refField.getText().trim());
+                contentStream.newLine();
+                contentStream.newLine();
+
+                // --- SERVICES ---
+                contentStream.setFont(fontBold, 12);
+                contentStream.showText("ΕΡΓΑΣΙΕΣ:");
+                contentStream.setFont(font, 12);
+                contentStream.newLine();
+
+                DefaultTableModel model = (DefaultTableModel) serviceTable.getModel();
+                for (int i = 0; i < model.getRowCount(); i++) {
+                    if ((Boolean) model.getValueAt(i, 1)) {
+                        String service = model.getValueAt(i, 0).toString();
+                        String notes = model.getValueAt(i, 2).toString();
+                        contentStream.showText("- " + service + (notes.isEmpty() ? "" : " (" + notes + ")"));
+                        contentStream.newLine();
+                    }
+                }
+                contentStream.endText();
+
+                // --- IMAGE ---
+                if (selectedImageFile != null && selectedImageFile.exists()) {
+                    PDImageXObject pdImage = PDImageXObject.createFromFile(selectedImageFile.getAbsolutePath(), document);
+                    // Adjust image position based on list length (approximate)
+                    float imageY = 400 - (model.getRowCount() * 5); 
+                    contentStream.drawImage(pdImage, 50, 200, 300, 225);
+                }
+            }
+
+            document.save(fileName);
+            JOptionPane.showMessageDialog(this, "Το PDF δημιουργήθηκε: " + fileName);
+            Desktop.getDesktop().open(new File(fileName));
+
+        } catch (Exception e) {
+            JOptionPane.showMessageDialog(this, "Σφάλμα PDF: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    private void showLoadDialog() {
+        DefaultListModel<String> listModel = new DefaultListModel<>();
+        List<String[]> allRecords = new ArrayList<>();
+        try (BufferedReader br = new BufferedReader(new FileReader("repairs_log.csv"))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                String[] parts = line.split("\\|");
+                allRecords.add(parts);
+                listModel.addElement(parts[1] + " (" + parts[0] + ")");
+            }
+        } catch (IOException e) {
+            JOptionPane.showMessageDialog(this, "No records found.");
+            return;
+        }
+        JList<String> list = new JList<>(listModel);
+        if (JOptionPane.showConfirmDialog(this, new JScrollPane(list), "Select Record", JOptionPane.OK_CANCEL_OPTION) == JOptionPane.OK_OPTION && list.getSelectedIndex() != -1) {
+            populateForm(allRecords.get(list.getSelectedIndex()));
+        }
+    }
+
+    private void populateForm(String[] data) {
+        nameField.setText(data[1]);
+        brandField.setText(data[2]);
+        modelField.setText(data[3]);
+        String savedServices = data[4];
+        DefaultTableModel model = (DefaultTableModel) serviceTable.getModel();
+        for (int i = 0; i < model.getRowCount(); i++) {
+            model.setValueAt(savedServices.contains(model.getValueAt(i, 0).toString()), i, 1);
+        }
+        if (!data[5].equals("None")) {
+            selectedImageFile = new File(data[5]);
+            if (selectedImageFile.exists()) displayScaledImage(selectedImageFile);
+        }
+    }
+    
+    private void styleButton(JButton button, Color bg) {
+        button.setBackground(bg);
+        button.setForeground(Color.WHITE);
+        button.setFocusPainted(false);
+        button.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        button.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        button.setBorder(BorderFactory.createEmptyBorder(10, 20, 10, 20));
+    }
+    
+    private void clearForm() {
+        // 1. Clear all text fields
+        nameField.setText("");
+        addressField.setText("");
+        cityField.setText("");
+        brandField.setText("");
+        telField.setText("");
+        refField.setText("");
+        modelField.setText("");
+
+        // 2. Uncheck all checkboxes in the table and clear notes
+        DefaultTableModel model = (DefaultTableModel) serviceTable.getModel();
+        for (int i = 0; i < model.getRowCount(); i++) {
+            model.setValueAt(false, i, 1); // Column 1 is the Boolean
+            model.setValueAt("", i, 2);    // Column 2 is the Notes
+        }
+
+        // 3. Reset the Image Preview
+        selectedImageFile = null;
+        imagePreviewLabel.setIcon(null);
+        imagePreviewLabel.setText("No Image Selected");
+
+        // 4. Feedback
+        System.out.println("Form cleared for next entry.");
+    }
+
+    
+   
+
+    public static void main(String[] args) {
+    	
+    	// 1. Get the current computer's ID
+        String id = getMachineID();
+        System.out.println("tSystemMotherboardSerial is :"+id);
+        // 2. THE LOCK: Replace "YOUR_CLIENT_ID" with the actual ID 
+        // you get when you run it on their computer for the first time.
+		
+		/*
+		 * if (!id.equals("18-C0-4D-60-2E-99")) { JOptionPane.showMessageDialog(null,
+		 * "Unauthorized Computer.\nHardware ID: " + id, "License Error",
+		 * JOptionPane.ERROR_MESSAGE); System.exit(0); }
+		 */
+        
+        try { 
+        	UIManager.setLookAndFeel(new com.formdev.flatlaf.FlatLightLaf());
+        } catch (Exception e) {}
+        SwingUtilities.invokeLater(() -> new WatchRepairFormWithImage2().setVisible(true));
+    }
+    
+    public static String getMachineID() {
+        try {
+            // Gets the network interface (Ethernet or Wi-Fi card)
+            java.net.InetAddress ip = java.net.InetAddress.getLocalHost();
+            java.net.NetworkInterface network = java.net.NetworkInterface.getByInetAddress(ip);
+            
+            // If the first one is null, grab the first available active interface
+            if (network == null) {
+                java.util.Enumeration<java.net.NetworkInterface> en = java.net.NetworkInterface.getNetworkInterfaces();
+                while (en.hasMoreElements()) {
+                    java.net.NetworkInterface ni = en.nextElement();
+                    if (ni.getHardwareAddress() != null) {
+                        network = ni;
+                        break;
+                    }
+                }
+            }
+
+            byte[] mac = network.getHardwareAddress();
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < mac.length; i++) {
+                sb.append(String.format("%02X%s", mac[i], (i < mac.length - 1) ? "-" : ""));
+            }
+            return sb.toString(); // Returns something like: 00-1A-2B-3C-4D-5E
+        } catch (Exception e) {
+            return "DEFAULT_KEY_001"; // Fallback if no network card is found
+        }
+    }
+    
+}
